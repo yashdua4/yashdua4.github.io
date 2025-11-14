@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ToDo App (jQuery) - single file</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Bootstrap for simple styling -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+  <style>
+    /* Minimal custom styling */
+    body { padding: 1.25rem; background:#f7fafc; }
+    .todo-card { max-width:800px; margin:0 auto; }
+    .task-done { text-decoration: line-through; color: #6c757d; }
+    .small-muted { font-size:0.85rem; color:#6c757d; }
+    .btn-sm { padding: .25rem .5rem; }
+    .editable { cursor:text; }
+  </style>
+</head>
+<body>
+  <div class="card todo-card shadow-sm">
+    <div class="card-body">
+      <h4 class="card-title">To-Do List (jQuery)</h4>
+      <p class="small-muted">Add, edit, delete tasks. All changes persist to <code>localStorage</code>.</p>
+
+      <form id="jqAddForm" class="form-inline mb-3" onsubmit="return false;">
+        <input id="jqTaskInput" class="form-control mr-2 flex-grow-1" placeholder="Add new task..." />
+        <select id="jqPriority" class="form-control mr-2">
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+        </select>
+        <button id="jqAddBtn" class="btn btn-primary">Add</button>
+      </form>
+
+      <div class="mb-2">
+        <button id="jqClearAll" class="btn btn-outline-danger btn-sm">Clear All</button>
+        <span class="ml-2 small-muted">Saved to <code>localStorage</code> key: <code>todo_jq_v1</code></span>
+      </div>
+
+      <ul id="jqList" class="list-group"></ul>
+      <div id="jqEmpty" class="text-center text-muted mt-3">No tasks yet — add one above.</div>
+    </div>
+  </div>
+
+  <!-- jQuery CDN -->
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script>
+  /*
+    jQuery ToDo App
+    - Unique function names prefixed with jq*
+    - localStorage key: 'todo_jq_v1'
+  */
+
+  (function ($) {
+    const STORAGE_KEY = 'todo_jq_v1';
+
+    // Retrieve tasks array from localStorage
+    function jqLoadTasks() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        console.error('Load error', e);
+        return [];
+      }
+    }
+
+    // Save tasks array to localStorage
+    function jqSaveTasks(tasks) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    }
+
+    // Generate a simple unique id
+    function jqGenerateId() {
+      return 't' + Date.now() + Math.floor(Math.random()*1000);
+    }
+
+    // Render tasks to DOM
+    function jqRenderTasks() {
+      const $list = $('#jqList').empty();
+      const tasks = jqLoadTasks();
+      if (!tasks.length) {
+        $('#jqEmpty').show();
+      } else {
+        $('#jqEmpty').hide();
+      }
+      // sort: high priority first, then newest
+      tasks.sort((a,b) => (a.priority === b.priority) ? b.createdAt - a.createdAt : (a.priority === 'high' ? -1 : 1));
+      tasks.forEach(task => {
+        const $item = $(`
+          <li class="list-group-item d-flex align-items-center justify-content-between" data-id="${task.id}">
+            <div class="d-flex align-items-center flex-grow-1">
+              <input type="checkbox" class="mr-3 jq-toggle-done" ${task.done ? 'checked' : ''}/>
+              <div class="flex-grow-1">
+                <div class="task-title ${task.done ? 'task-done' : ''} editable" contenteditable="false">${escapeHtml(task.title)}</div>
+                <div class="small-muted">Priority: ${task.priority} • Added: ${new Date(task.createdAt).toLocaleString()}</div>
+              </div>
+            </div>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-secondary jq-edit">Edit</button>
+              <button class="btn btn-outline-success jq-save" style="display:none">Save</button>
+              <button class="btn btn-outline-warning jq-cancel" style="display:none">Cancel</button>
+              <button class="btn btn-outline-danger jq-delete">Delete</button>
+            </div>
+          </li>
+        `);
+
+        // highlight high priority visually
+        if (task.priority === 'high') {
+          $item.addClass('border-danger');
+        }
+
+        $list.append($item);
+      });
+    }
+
+    // Escape HTML to avoid injection in content
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, function (s) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];
+      });
+    }
+
+    // Add new task
+    function jqAddTask(title, priority) {
+      title = String(title || '').trim();
+      if (!title) return false;
+      const tasks = jqLoadTasks();
+      const newTask = { id: jqGenerateId(), title: title, priority: priority || 'normal', done: false, createdAt: Date.now() };
+      tasks.push(newTask);
+      jqSaveTasks(tasks);
+      jqRenderTasks();
+      return true;
+    }
+
+    // Delete task by id
+    function jqDeleteTask(id) {
+      let tasks = jqLoadTasks();
+      tasks = tasks.filter(t => t.id !== id);
+      jqSaveTasks(tasks);
+      jqRenderTasks();
+    }
+
+    // Toggle done
+    function jqToggleDone(id, done) {
+      const tasks = jqLoadTasks();
+      const t = tasks.find(x => x.id === id);
+      if (t) { t.done = !!done; jqSaveTasks(tasks); jqRenderTasks(); }
+    }
+
+    // Update task title/priority
+    function jqUpdateTask(id, newTitle, newPriority) {
+      const tasks = jqLoadTasks();
+      const t = tasks.find(x => x.id === id);
+      if (t) {
+        t.title = String(newTitle).trim() || t.title;
+        if (newPriority) t.priority = newPriority;
+        jqSaveTasks(tasks);
+        jqRenderTasks();
+      }
+    }
+
+    // Clear all tasks (idempotent)
+    function jqClearAll() {
+      if (!confirm('Clear all tasks? This cannot be undone.')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      jqRenderTasks();
+    }
+
+    // Document ready wiring
+    $(function () {
+      // Render on load
+      jqRenderTasks();
+
+      // Add via button or Enter key
+      $('#jqAddBtn').on('click', function (e) {
+        const title = $('#jqTaskInput').val();
+        const priority = $('#jqPriority').val();
+        if (jqAddTask(title, priority)) {
+          $('#jqTaskInput').val('').focus();
+        } else {
+          alert('Please enter a task title.');
+        }
+      });
+      $('#jqTaskInput').on('keypress', function (e) {
+        if (e.which === 13) { $('#jqAddBtn').click(); return false; }
+      });
+
+      // Delegated handlers for list actions
+      $('#jqList')
+        .on('click', '.jq-delete', function () {
+          const id = $(this).closest('li').data('id');
+          jqDeleteTask(id);
+        })
+        .on('change', '.jq-toggle-done', function () {
+          const id = $(this).closest('li').data('id');
+          jqToggleDone(id, $(this).is(':checked'));
+        })
+        .on('click', '.jq-edit', function () {
+          const $li = $(this).closest('li');
+          $li.find('.task-title').attr('contenteditable', 'true').focus();
+          $li.find('.jq-edit, .jq-delete').hide();
+          $li.find('.jq-save, .jq-cancel').show();
+        })
+        .on('click', '.jq-cancel', function () {
+          // re-render to discard edits
+          jqRenderTasks();
+        })
+        .on('click', '.jq-save', function () {
+          const $li = $(this).closest('li');
+          const id = $li.data('id');
+          const newTitle = $li.find('.task-title').text().trim();
+          // priority editing could be added; keep original priority for simplicity
+          jqUpdateTask(id, newTitle);
+        });
+
+      $('#jqClearAll').on('click', jqClearAll);
+
+      // keyboard shortcut: Ctrl+Shift+N to focus new task
+      $(document).on('keydown', function (e) {
+        if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'n') {
+          $('#jqTaskInput').focus();
+        }
+      });
+    });
+  })(jQuery);
+  </script>
+</body>
+</html>
+        vm.save();
+      };
+    }]);
+  })(angular);
+  </script>
